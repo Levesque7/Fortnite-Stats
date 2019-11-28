@@ -125,12 +125,9 @@ Function Get-FNStore {
 
 Function Update-AllFNPlayersMatchHistory {
     $allPlayers = Get-FNPlayerList
-    $startTime = Get-Date
     foreach ($p in $allPlayers) {
         Update-FNPlayerMatchHistory -Username $p.Username
     }
-    $endTime = Get-Date
-    New-RequestsLogEntry -StartTime $startTime -EndTime $endTime
 }
 
 Function Update-PlayerMatchDB {
@@ -203,7 +200,6 @@ Function New-RequestsLogEntry {
         $output = "CompletionTime = $EndTime | Duration = $duration Milliseconds | TotalRequests = $Requests"
         $output | Add-Content -Path $path -Force
     }
-    $Script:req = 0 
 }
 
 Function Get-FNPlayerStats {
@@ -323,7 +319,6 @@ Function Update-FNRecentMatches {
 
 Function Update-AllFNRecentMatches {
     $players = Get-FNPlayerList
-    $startTime = Get-Date
     $i = 0
     foreach ($p in $players) {
         $i++
@@ -332,8 +327,6 @@ Function Update-AllFNRecentMatches {
         Write-Progress -Activity "Checking for new matches" -Status "$i Players Complete" -PercentComplete $perc -CurrentOperation "Checking $($p.Username)"
         Start-Sleep -Milliseconds 500
     }
-    $endTime = Get-Date
-    New-RequestsLogEntry -StartTime $startTime -EndTime $endTime
 }
 
 Function Get-TopKillGames {
