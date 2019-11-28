@@ -1,4 +1,6 @@
-# Initialization
+# README
+
+## Initialization
 
 1. Get an API key from [Fortnite Tracker](https://fortnitetracker.com/site-api).
 2. Add a one line .txt file named `api_key.txt` to the root directory with your API key as the only text.
@@ -10,3 +12,8 @@
     * pc
     * xbox
     * psn
+
+## Help
+
+* For a list of available commands: `Get-Command -Module Fortnite-Stats`
+* Command self-documentation will be updated in the future
