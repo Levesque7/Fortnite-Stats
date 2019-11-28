@@ -94,7 +94,9 @@ Function New-FNPlayer {
     $object
 }
 
-Function Get-FNPlayerMatchHistory { #Do not use anymore.
+## No longer used. Out of date
+<# 
+ Function Get-FNPlayerMatchHistory { 
     Param([parameter(Mandatory)][string]$Username)
     $accountID = Get-PlayerAccountID -Username $Username
 
@@ -103,13 +105,16 @@ Function Get-FNPlayerMatchHistory { #Do not use anymore.
     $script:req++
     $matches
 }
+#>
 
+<#
 Function Update-FNPlayerMatchHistory { #Do not use anymore.
     Param([parameter(Mandatory)][string]$Username)
 
     $matches = Get-FNPlayerMatchHistory -Username $Username
     Update-PlayerMatchDB -Username $Username -Entries $matches
 }
+#>
 
 Function Get-FNStore {
     $getStore = "https://api.fortnitetracker.com/v1/store"
