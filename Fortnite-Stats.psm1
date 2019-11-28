@@ -67,7 +67,7 @@ Function Get-FNAccountID {
 Function New-FNPlayer {
     Param(
         [parameter(Mandatory)][string]$Username,
-        [parameter(Mandatory)][string]$Platform
+        [parameter(Mandatory)][ValidateSet("pc","xbox","psn")][string]$Platform
     )
     
     $exist? = Test-Path "$ScriptDir\$playerList"

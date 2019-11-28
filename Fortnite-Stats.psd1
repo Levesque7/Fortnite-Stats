@@ -12,7 +12,7 @@
 RootModule = 'Fortnite-Stats.psm1'
 
 # Version number of this module.
-ModuleVersion = '19.11.28.1'
+ModuleVersion = '19.11.28.2'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
