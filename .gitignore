@@ -1,0 +1,14 @@
+#Secrets
+api_key.txt
+#Dev
+dev.ps1
+#Data
+*players.csv
+\pages
+\match_histories
+\recycle_bin
+\stream_stats
+#Logs
+\logs
+
+
