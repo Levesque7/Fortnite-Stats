@@ -405,9 +405,11 @@ Function Convert-PlaylistName {
     }
     else { 
         $output = switch ($Playlist) {
-            "p2"    { "Solo" }
-            "p10"   { "Duo" }
-            "p9"    { "Squad" }
+            { $_ -like "p2*" }   { "Solo $Playlist" }
+            { $_ -like "p10*" }  { "Duo $Playlist" }
+            { $_ -like "p9*" }   { "Squad $Playlist" }
+            { $_ -like "ltm*" }  { "LTM $Playlist" }
+            { $_ -like "misc*" } { "Misc $Playlist"}
             Default { "Uknown" }
         }
     }
