@@ -59,7 +59,6 @@ Function Get-FNAccountID {
     
     $playerStats = "https://api.fortnitetracker.com/v1/profile/$platform/$username"
     $response = Invoke-RestMethod -Uri $playerStats -Headers $key
-    $script:req++
     if ($response.error -eq "Player Not Found") { Throw $response.error }
     $response.AccountID
 }
@@ -102,7 +101,6 @@ Function New-FNPlayer {
 
     $playerMatchHistory = "https://api.fortnitetracker.com/v1/profile/account/$accountID/matches"
     $matches = Invoke-RestMethod -Uri $playerMatchHistory -Headers $key
-    $script:req++
     $matches
 }
 #>
@@ -119,7 +117,6 @@ Function Update-FNPlayerMatchHistory { #Do not use anymore.
 Function Get-FNStore {
     $getStore = "https://api.fortnitetracker.com/v1/store"
     $store = Invoke-RestMethod -Uri $getStore -Headers $key
-    $script:req++
     $store
 }
 
@@ -210,7 +207,6 @@ Function Get-FNPlayerStats {
     Do {
         $retry = $false
         $response = Invoke-RestMethod -Uri $playerStats -Headers $key
-        $script:req++
         if ($response.error -eq "Player Not Found") { Throw $response.error }
         elseif ($response.error) { $retry = $true }
     }
@@ -365,7 +361,6 @@ Function Get-PlayerTopKillGames {
 Function Get-RemainingWebRequests {
     $getStore = "https://api.fortnitetracker.com/v1/store"
     $store = Invoke-WebRequest -Uri $getStore -Headers $key
-    $script:req = 0
     $store.Headers.'X-RateLimit-Remaining-minute'
 } 
 
@@ -390,7 +385,7 @@ Function Start-FNPlayerMatchMonitor {
     Write-Host "Match monitor running..."
     Do {
         Update-AllFNRecentMatches
-        Start-Countdown -Seconds 180 -Status "Rate Limiting"
+        Start-Countdown -Seconds 60 -Status "Rate Limiting"
     }
     Until ((Get-Date) -gt $convertedDate)
     Write-Host "Match monitor is now stopped."
@@ -699,12 +694,12 @@ Function Start-Countdown {
     While ($Seconds -ge 0) {
         $Seconds = [Math]::Round(($endSleep - (Get-Date)).TotalSeconds)
         Write-Progress -Activity "Sleeping" -Status $Status -SecondsRemaining $Seconds
-        Start-Sleep -Milliseconds 100
+        Start-Sleep -Milliseconds 200
     }
 }
 
 Function Get-AllPlaylists {
-    $playlists = Import-CSV "$ScriptDir\assets\playlists.csv"
+    $playlists = Import-CSV "$ScriptDir\$assetsDir\playlists.csv"
     $playlists
 }
 
@@ -828,7 +823,7 @@ Function Test-Username {
 }
 
 Function Get-NewVictoryRoyales {
-    $royalesDir = "$ScriptDir\Pages\IndividualVictoryRoyales.CSV"
+    $royalesLoc = "$ScriptDir\$pagesDir\IndividualVictoryRoyales.CSV"
     $royales = @()
 
     # Get Royales Today
@@ -857,9 +852,9 @@ Function Get-NewVictoryRoyales {
 
     # Check Royales List and Update
     $newRoyales = @()
-    $exist? = Test-Path $royalesDir
+    $exist? = Test-Path $royalesLoc
     if ($exist?) {
-        $merge = Import-CSV -Path $royalesDir
+        $merge = Import-CSV -Path $royalesLoc
     }
     else {
         $merge = @()
@@ -880,6 +875,6 @@ Function Get-NewVictoryRoyales {
         }
     } 
 
-    $merge | Sort-Object -Property 'Date Collected' -Descending | Export-Csv -Path $royalesDir -NoTypeInformation -Force
+    $merge | Sort-Object -Property 'Date Collected' -Descending | Export-Csv -Path $royalesLoc -NoTypeInformation -Force
     $newRoyales
 }
