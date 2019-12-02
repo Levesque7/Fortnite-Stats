@@ -1,11 +1,11 @@
 # Settings
 $Env:FNSDirectory = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
 $ENV:TRNApiUrl = "https://api.fortnitetracker.com/v1/"
-$Env:FNSPlatforms = @("pc","xbox","psn")
-$Env:FNSScoringSettings = @(1,6,1,0)
-    # Solo  - p2    - top 1,10,25
-    # Duo   - p10   - top 1,5,12
-    # Squad - p9    - top 1,3,6 
+$Env:FNSScorePerElim = 1
+$Env:FNSScorePerWin = 6
+$Env:FNSScorePerTop10Percent = 1 # Solo Top 10, Duo Top 5, Squads Top 3
+$Env:FNSScorePerTop25Percent = 0 # Solo Top 25, Duo Top 12, Squads Top 6
+$Env:FNSScorePerPlayerOutlived = 0 
 
 # Directories
 $Env:FNSMatchDir = "$Env:FNSDirectory\match_histories"
@@ -204,7 +204,7 @@ Function Get-FNPlayerStats {
     )
     if(!$Platform) { $platform = Get-PlayerPlatform -Username $Username }
     
-    $profile = "$Platform/$Username"
+    $profile = "profile/$Platform/$Username"
     Do {
         $retry = $false
         $response = Invoke-FNTrackerRestMethod -Endpoint $profile
@@ -459,7 +459,7 @@ Function New-Event {
         })][string]$Username,
         [parameter(Mandatory)][ValidateSet("Solo","Duo","Squad")][string]$Playlist,
         [parameter][ValidateSet("SingleElim","DoubleElim","Classic")][string]$Type = "Classic",
-        [array]$ScoringSettings = $Env:FNSScoringSettings,
+        [array]$ScoringSettings = @($Env:FNSScorePerElim,$Env:FNSScorePerWin,$Env:FNSScorePerTop10Percent,$Env:FNSScorePerTop25Percent,$Env:FNSScorePerPlayerOutlived),
         [int]$NumberofGames,
         [int]$MaxTeams
     )
@@ -530,16 +530,17 @@ Function New-ScoringSettings {
 Function Get-MatchScore {
     Param(
         [parameter(Mandatory)][array]$Match,
-        [array]$ScoringSettings = $Env:FNSScoringSettings
+        [array]$ScoringSettings = @($Env:FNSScorePerElim,$Env:FNSScorePerWin,$Env:FNSScorePerTop10Percent,$Env:FNSScorePerTop25Percent,$Env:FNSScorePerPlayerOutlived)
     )
 
     $Wins = [int]$Match.Top1
     $Top10Percent = [int]$Match.Top3 + [int]$Match.Top5 + [int]$Match.Top10
     $Top25Percent = [int]$Match.Top6 + [int]$Match.Top12 + [int]$Match.Top25
+    $PlayersOutlived = [int]$Match.PlayersOutlived
 
-    $place = ($Wins * $ScoringSettings[1]) + (($Top10Percent - $Wins) * $ScoringSettings[2]) + (($Top25Percent - $Top10Percent - $Wins) * $ScoringSettings[3])
+    $place = ($Wins * [int]$ScoringSettings[1]) + (($Top10Percent - $Wins) * [int]$ScoringSettings[2]) + (($Top25Percent - $Top10Percent - $Wins) * [int]$ScoringSettings[3]) + ($PlayersOutlived * [int]$ScoringSettings[4])
     
-    $elims = [int]$Match.kills * $ScoringSettings[0]
+    $elims = [int]$Match.kills * [int]$ScoringSettings[0]
 
     $score = [pscustomobject]@{
         Eliminations = $elims
@@ -610,14 +611,14 @@ Function Update-TopScoringGames {
 Function Get-FNPlayerCareerStats {
     Param(
         [parameter(Mandatory)][string]$Username,
-        [array]$ScoringSettings = $Env:FNSScoringSettings
+        [array]$ScoringSettings = @($Env:FNSScorePerElim,$Env:FNSScorePerWin,$Env:FNSScorePerTop10Percent,$Env:FNSScorePerTop25Percent,$Env:FNSScorePerPlayerOutlived)
     )
 
     $lifeTimeStats = (Get-FNPlayerStats -Username $Username).lifeTimeStats
     $wins = [int]$lifeTimeStats[8].Value
     $Top10Percent = ([int]$lifeTimeStats[0].Value + [int]$lifeTimeStats[1].Value + [int]$lifeTimeStats[3].Value)
     $Top25Percent = ([int]$lifeTimeStats[2].Value + [int]$lifeTimeStats[4].Value + [int]$lifeTimeStats[5].Value)
-    $placementPoints = ($wins * $ScoringSettings[1]) + (($Top10Percent - $Wins) * $ScoringSettings[2]) + (($Top25Percent - $Top10Percent - $Wins) * $ScoringSettings[3])
+    $placementPoints = ($wins * [int]$ScoringSettings[1]) + (($Top10Percent - $Wins) * [int]$ScoringSettings[2]) + (($Top25Percent - $Top10Percent - $Wins) * [int]$ScoringSettings[3])
     $score = [int]$lifeTimeStats[10].Value + $placementPoints
 
     $object = [pscustomobject]@{
@@ -648,7 +649,6 @@ Function Get-AllFNPlayerCareerStats {
 Function Get-PlayerRecentStats {
     Param(
         [parameter(Mandatory)][string]$Username,
-        [array]$ScoringSettings = $Env:FNSScoringSettings,
         [int]$Days = 7
     )
     $recentDate = (Get-Date).AddDays(-$Days)
