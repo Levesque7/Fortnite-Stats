@@ -2,10 +2,13 @@
 api_key.txt
 #Dev
 dev.ps1
+debug.ps1
 #Data
 *players.csv
-\pages
-\match_histories
+*events.csv
+*matches.csv
+*career_stats.csv
+*royales.csv
 \recycle_bin
 \stream_stats
 #Logs

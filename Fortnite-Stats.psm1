@@ -1,28 +1,27 @@
+#Requires -Version 5.0
+
 # Settings
 $Env:FNSDirectory = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
 $ENV:TRNApiUrl = "https://api.fortnitetracker.com/v1/"
-$Env:FNSScorePerElim = 1
-$Env:FNSScorePerWin = 6
-$Env:FNSScorePerTop10Percent = 1 # Solo Top 10, Duo Top 5, Squads Top 3
+$Env:FNSScorePerElim = 15
+$Env:FNSScorePerWin = 35
+$Env:FNSScorePerTop10Percent = 15 # Solo Top 10, Duo Top 5, Squads Top 3
 $Env:FNSScorePerTop25Percent = 0 # Solo Top 25, Duo Top 12, Squads Top 6
-$Env:FNSScorePerPlayerOutlived = 0 
+$Env:FNSScorePerPlayerOutlived = 1 
 
 # Directories
-$Env:FNSMatchDir = "$Env:FNSDirectory\match_histories"
 $Env:FNSRecycleBinDir = "$Env:FNSDirectory\recycle_bin"
 $Env:FNSLogsDir = "$Env:FNSDirectory\logs"
-$Env:FNSPagesDir = "$Env:FNSDirectory\pages"
-$Env:FNSEventsDir = "$Env:FNSDirectory\events"
 $Env:FNSAssetsDir = "$Env:FNSDirectory\assets"
 $Env:FNSStreamStatsDir = "$Env:FNSDirectory\stream_stats"
 
-# Filenames
-$Env:FNSPlayerList = "$Env:FNSAssetsDir\players.CSV"
-
-
-# Solo  - p2    - top 1,10,25
-# Duo   - p10   - top 1,5,12
-# Squad - p9    - top 1,3,6 
+# Databases
+$Env:FNSUserDB = "$Env:FNSAssetsDir\players.csv"
+$Env:FNSEventsDB = "$Env:FNSAssetsDir\events.csv"
+$Env:FNSMatchDB = "$Env:FNSAssetsDir\matches.csv"
+$Env:FNSCareerDB = "$Env:FNSAssetsDir\career_stats.csv"
+$Env:FNSVictoryDB = "$Env:FNSAssetsDir\royales.csv"
+$ENV:FNSPlaylistDB = "$Env:FNSAssetsDir\playlists.csv"
 
 Function Set-TRNApiKey {
     Param([parameter(Mandatory)][string]$Key)
@@ -42,10 +41,10 @@ Function Get-TRNApiKey {
 }
 
 Function Initialize-FNSDirectories {
-    $allDirs = @($Env:FNSMatchDir,$Env:FNSRecycleBinDir,$Env:FNSLogsDir,$Env:FNSPagesDir,$Env:FNSEventsDir,$Env:FNSAssetsDir,$Env:FNSStreamStatsDir)
+    $allDirs = @($Env:FNSRecycleBinDir,$Env:FNSLogsDir,$Env:FNSAssetsDir,$Env:FNSStreamStatsDir)
     foreach ($dir in $allDirs) {
-        $exist? = Test-Path "$Env:FNSDirectory\$dir"
-        if (!$exist?) { New-Item "$Env:FNSDirectory\$dir" -ItemType Directory }
+        $exist? = Test-Path "$dir"
+        if (!$exist?) { New-Item "$dir" -ItemType Directory }
     }
 }
 
@@ -57,7 +56,7 @@ Function Invoke-FNTrackerRestMethod {
 
 Function Get-FNPlayerList {
     $export = @()
-    $list = Import-Csv "$Env:FNSPlayerList"
+    $list = Import-Csv "$Env:FNSUserDB"
     $update = $false
     
     foreach ($p in $list) {
@@ -75,7 +74,7 @@ Function Get-FNPlayerList {
         }
         $export += $object
     }
-    if ($update) { $export | Export-Csv -Path "$Env:FNSPlayerList" -Force -NoTypeInformation }
+    if ($update) { $export | Export-Csv -Path "$Env:FNSUserDB" -Force -NoTypeInformation }
     $export
 }
 
@@ -95,8 +94,8 @@ Function New-FNPlayer {
         [parameter(Mandatory)][ValidateSet("pc","xbox","psn")][string]$Platform
     )
     
-    $exist? = Test-Path "$Env:FNSPlayerList"
-    if ($exist?) { $list = Import-Csv "$Env:FNSPlayerList" }
+    $exist? = Test-Path "$Env:FNSUserDB"
+    if ($exist?) { $list = Import-Csv "$Env:FNSUserDB" }
     else { $list = @() }
 
     $listLength = ($list | Measure-Object).Count
@@ -114,7 +113,7 @@ Function New-FNPlayer {
     elseif ($listLength -eq 1) { $list = @($list,$object) }
     else { $list += $object }
 
-    $list | Export-Csv -Path "$Env:FNSPlayerList" -Force -NoTypeInformation
+    $list | Export-Csv -Path "$Env:FNSUserDB" -Force -NoTypeInformation
     New-PlayerTransactionLogEntry -Username $Username -Platform $Platform -Type "Added"
     $object
 }
@@ -132,7 +131,7 @@ Function Update-PlayerMatchDB {
 
     )
 
-    $path = "$Env:FNSMatchDir\$Username.CSV"
+    $path = $Env:FNSMatchDB
     $new = @()
     $allMatches = @()
     $total = 0
@@ -165,11 +164,12 @@ Function Update-PlayerMatchDB {
                 PlaylistID = $m.playlistId
                 PlayersOutlived = $m.playersOutlived
                 EventID = $null
+                Username = $Username
             }
 
             $allMatches += $object
             $total += $object.Matches
-            $format = Format-MatchOutput -Entry $object -Username $Username -IncludeNumberOfMatches -IncludeScore -IncludeMinutesPlayed -IncludePlayersOutlived
+            $format = Format-MatchOutput -Entry $object -IncludeUsername -IncludeNumberOfMatches -IncludeScore -IncludeMinutesPlayed -IncludePlayersOutlived
             $new += $format
         }
     }
@@ -212,6 +212,14 @@ Function Get-FNPlayerStats {
         elseif ($response.error) { $retry = $true }
     }
     Until (!$retry)
+    
+    <#$object = $response.lifeTimeStats
+    Add-Member -InputObject $object -NotePropertyName Username -NotePropertyValue $response.epicUserHandle
+
+    $careerStats = Import-Csv -Path $Env:FNSCareerDB | Where-Object {$_.Username -ne $Username}
+    $careerStats += $object
+    $careerStats | Export-Csv -Path $Env:FNSCareerDB#>
+    
     $response
 }
 
@@ -245,23 +253,14 @@ Function Get-PlayerAccountID {
 
 Function Remove-Player {
     Param([parameter(Mandatory)][string]$Username)
-    Remove-PlayerMatchHistory -Username $Username
+    #Remove-PlayerMatchHistory -Username $Username
     Remove-PlayerFromList -Username $Username
-}
-
-Function Remove-PlayerMatchHistory {
-    Param([parameter(Mandatory)][string]$Username)
-    $platform = Get-PlayerPlatform -Username $Username
-
-    Move-Item -Path "$Env:FNSMatchDir\$Username.CSV" -Destination "$Env:FNSRecycleBinDir" -Force
-    $entry = New-PlayerTransactionLogEntry -Username $Username -Platform $platform -Type "Cleared"
-    $entry
 }
 
 Function Remove-PlayerFromList {
     Param([parameter(Mandatory)][string]$Username)
     $platform = Get-PlayerPlatform $Username
-    $path = "$Env:FNSPlayerList"
+    $path = "$Env:FNSUserDB"
 
     $list = Import-CSV $path
     $newlist = $list | Where-Object {$_.Username -ne $Username}
@@ -289,23 +288,6 @@ Function New-PlayerTransactionLogEntry {
 
 }
 
-Function Clear-AllPlayerMatchHistories {
-    $files = Get-ChildItem -Path "$Env:FNSMatchDir" 
-
-    foreach ($f in $files) {
-        Move-Item -Path "$Env:FNSMatchDir\$($f.Name)" -Destination "$Env:FNSRecycleBinDir" -Force
-    }
-        
-    $entry = New-PlayerTransactionLogEntry -Username "All Users" -Platform "All Platforms" -Type "Cleared"
-    $entry
-}
-
-Function Get-FNPlayerLifeTimeStats {
-    Param([parameter(Mandatory)][string]$Username)
-    $return = (Get-FNPlayerStats -Username $Username).lifeTimeStats
-    $return
-}
-
 Function Update-FNRecentMatches {
     Param([parameter(Mandatory)][string]$Username)
     $matches = Get-FNRecentMatches -Username $Username
@@ -326,37 +308,23 @@ Function Update-AllFNRecentMatches {
     }
 }
 
-Function Get-TopKillGames {
-    $all = @()
-    $players = Get-FNPlayerList
-    foreach ($p in $players) {
-        $playerTop = Get-PlayerTopKillGames -Username $p.Username
-        $all += $playerTop
-    }
-    $all = $all | Sort-Object -Property @{Expression = {$_.Elims}; Ascending = $false}, Date | Select-Object -First 25
-    $all
-}
-
-Function Update-TopKillGames {
-    $output = Get-TopKillGames | Sort-Object -Property @{Expression = {$_.Elims}; Ascending = $false}, Date | Select-Object -First 25
-    $output | Export-CSV -Path "$Env:FNSPagesDir\TopKillGames.CSV" -Force -NoTypeInformation
-}
-
-Function Get-PlayerTopKillGames {
-    Param([parameter(Mandatory)][string]$Username)
-    $all = @()
-    $min = 4
+Function Get-TopElimGames {
+    Param(
+        [string]$Username = "*",
+        [string]$Playlist = "*",
+        [int]$Count = 25,
+        [int]$Days = 5000
+    )
     $include = @("p2","p9","p10")
-    
-    $matches = Import-Csv "$Env:FNSMatchDir\$Username.CSV"
-    foreach ($m in $matches) {
-        if (($m.matches -eq 1) -and ($m.kills -ge $min) -and ($include -contains $m.Playlist)) {
-            $object = Format-MatchOutput -Entry $m -Username $Username
-            $all += $object
-        }
-    }  
-    $all = $all | Sort-Object -Property @{Expression = {$_.Elims}; Ascending = $false}, Date
-    $all
+    $recentDate = (Get-Date).AddDays(-$Days)
+    $singleMatches = Get-LocalGamesPlayed | Where-Object {((Get-Date -Date $_.DateCollected) -ge $recentDate) -and ($_.matches -eq 1) -and ($include -contains $_.Playlist) -and ($_.Username -like $Username)}
+    $formatted = @()
+    foreach ($m in $singleMatches) {
+        $match = Format-MatchOutput -Entry $m -IncludeUsername -IncludeScore -IncludePlayersOutlived
+        $formatted += $match
+    }
+    $topScores = $formatted | Where-Object { $_.Playlist -like $Playlist } | Sort-Object -Property @{Expression = {$_.Elims}; Ascending = $false}, Date | Select-Object -First $Count
+    $topScores
 }
 
 Function New-MatchLogEntry {
@@ -386,16 +354,17 @@ Function Start-FNPlayerMatchMonitor {
     Write-Host "Match monitor is now stopped."
 }
 
-Function Get-PlayerLocalGamesPlayed {
-    Param([parameter(Mandatory)][string]$Username)
-    $matches = Import-Csv -Path "$Env:FNSMatchDir\$Username.CSV"
+Function Get-LocalGamesPlayed {
+    Param([string]$Username = "*")
+    $matches = Import-Csv -Path $Env:FNSMatchDB | Where-Object {$_.Username -like $Username}
     $matches
 }
 
+
 Function Convert-PlaylistName {
     Param([parameter(Mandatory)][string]$Playlist)
-    $playlists = Get-AllPlaylists
-    if ($playlists.Code -contains $Playlist ) {
+    $playlists = Get-Playlists
+    if ($playlists.Code -contains $Playlist) {
         $output = ($playlists | Where-Object {$_.Code -eq $Playlist}).Name
     }
     else { 
@@ -414,7 +383,7 @@ Function Convert-PlaylistName {
 Function Format-MatchOutput {
     Param(
         [parameter(Mandatory)][array]$Entry,
-        [string]$Username,
+        [switch]$IncludeUsername,
         [switch]$IncludeNumberOfMatches,
         [switch]$IncludeScore,
         [switch]$IncludeMinutesPlayed,
@@ -447,17 +416,14 @@ Function Format-MatchOutput {
     Add-Member -InputObject $object -NotePropertyName Result -NotePropertyValue $Result
     if ($IncludeMinutesPlayed) { Add-Member -InputObject $object -NotePropertyName MinutesPlayed -NotePropertyValue $Entry.MinutesPlayed }
     if ($IncludePlayersOutlived) { Add-Member -InputObject $object -NotePropertyName PlayersOutlived -NotePropertyValue $Entry.PlayersOutlived }
-    if ($Username) { Add-Member -InputObject $object -NotePropertyName Username -NotePropertyValue $Username }
+    if ($IncludeUsername) { Add-Member -InputObject $object -NotePropertyName Username -NotePropertyValue $Entry.Username }
     $object
 }
 
-Function New-Event {
+Function New-SoloEvent {
     Param(
-        [parameter(Mandatory)][ValidateScript({
-            if (Get-FNPlayerList -contains $Username) { $True }
-            else { Throw "Username does not exist in the database. Use New-FNPlayer to add."}
-        })][string]$Username,
-        [parameter(Mandatory)][ValidateSet("Solo","Duo","Squad")][string]$Playlist,
+        [parameter(Mandatory)][datetime]$EndDate,
+        [datetime]$StartDate = (Get-Date),
         [parameter][ValidateSet("SingleElim","DoubleElim","Classic")][string]$Type = "Classic",
         [array]$ScoringSettings = @($Env:FNSScorePerElim,$Env:FNSScorePerWin,$Env:FNSScorePerTop10Percent,$Env:FNSScorePerTop25Percent,$Env:FNSScorePerPlayerOutlived),
         [int]$NumberofGames,
@@ -476,9 +442,25 @@ Function New-Event {
     if ((!$MaxTeams) -and ($Type -eq "Classic")) { $MaxTeams = 1000 }
 
     $eventNumber = Get-EventNumber
-    New-Item -ItemType Directory -Path "$Env:FNSEventsDir\$eventNumber"
-    $owner = New-EventUserObject -Username $Username -Platform (Get-PlayerPlatform -Username $Username) -Owner
-    New-EventPlayerList -Owner $owner -EventNumber $eventNumber
+    $eventsDB = Import-Csv -Path $Env:FNSEventsDB
+
+    if ($StartDate -gt (Get-Date)) { $status = "Upcoming" }
+    elseif ($StartDate -le (Get-Date)) { $status = "Active" }
+    
+    $newEvent = [pscustomobject] @{
+        EventID = $eventNumber
+        StartDate = $StartDate
+        EndDate = $EndDate
+        PointsPerElim = $ScoringSettings[0]
+        PointsPerWin = $ScoringSettings[1]
+        PointsPerTop10 = $ScoringSettings[2]
+        PointsPerTop25 = $ScoringSettings[3]
+        PointsPerPlayerOutlived = $ScoringSettings[4]
+        Status = $status
+    }
+
+    $eventsDB += $newEvent
+    $eventsDB | Export-Csv -Path $Env:FNSEventsDB -Force -NoTypeInformation
     
 }
 
@@ -491,40 +473,9 @@ Function New-EventPlayerList {
 }
 
 Function Get-EventNumber {
-    $existingEvents = @()
-    $existingEvents += (Get-ChildItem -Path "$Env:FNSEventsDir" -Directory -ErrorAction SilentlyContinue).Name.ToUInt64($_)
-    if ($null -ne $existingEvents) { $nextNumber = ($existingEvents | Measure-Object -Maximum).Maximum + 1 }
-    else { $nextNumber = 1 }
+    $existingEvents = Import-CSV -Path "$Env:FNSAssetsDir\events.csv"
+    $nextNumber = ([int]$existingEvents.eventID | Measure-Object -Maximum).Maximum + 1 
     $nextNumber
-}
-
-Function New-EventUserObject {
-    Param(
-        [parameter(Mandatory)][string]$Username,
-        [parameter(Mandatory)][ValidateSet("pc","psn","xbox")][string]$Platform,
-        [switch]$Owner = $false
-    )
-
-    $userObject = [pscustomobject]@{
-        Username = $Username
-        Platform = Get-PlayerPlatform -Username $Username
-        Owner = $Owner
-    }
-    
-    $userObject
-}
-
-Function New-ScoringSettings {
-    Param(
-        [int]$Elims = 0,
-        [int]$Wins = 0,
-        [int]$Top10Percent = 0,
-        [int]$Top25Percent = 0
-    )
-    
-    $scoringArray = @($Elims,$Wins,$Top10Percent,$Top25Percent)
-    if (($scoringArray | Measure-Object -Sum).Sum -le 0) { Throw "Scoring settings must include points somewhere!" }
-    $scoringArray
 }
 
 Function Get-MatchScore {
@@ -538,7 +489,7 @@ Function Get-MatchScore {
     $Top25Percent = [int]$Match.Top6 + [int]$Match.Top12 + [int]$Match.Top25
     $PlayersOutlived = [int]$Match.PlayersOutlived
 
-    $place = ($Wins * [int]$ScoringSettings[1]) + (($Top10Percent - $Wins) * [int]$ScoringSettings[2]) + (($Top25Percent - $Top10Percent - $Wins) * [int]$ScoringSettings[3]) + ($PlayersOutlived * [int]$ScoringSettings[4])
+    $place = ($Wins * [int]$ScoringSettings[1]) + ($Top10Percent * [int]$ScoringSettings[2]) + ($Top25Percent * [int]$ScoringSettings[3]) + ($PlayersOutlived * [int]$ScoringSettings[4])
     
     $elims = [int]$Match.kills * [int]$ScoringSettings[0]
 
@@ -551,108 +502,62 @@ Function Get-MatchScore {
     $score
 }
 
-Function Add-PlayerToEvent {
-    Param(
-        [parameter(Mandatory)][string]$Username,
-        [parameter(Mandatory)][ValidateSet("pc","psn","xbox")][string]$Platform,
-        [parameter(Mandatory)][uint64]$EventNumber
-    )
-}
-
 Function Update-AllMatchScores {
     $PlayerList = Get-FNPlayerList
     foreach ($p in $PlayerList) {
         $updatedMatches = @()
-        $path = "$Env:FNSMatchDir\$($p.Username).CSV"
-        $matches = Import-Csv -Path $path
+        $matches = Get-LocalGamesPlayed
         foreach ($m in $matches) {
             $m.Score = (Get-MatchScore -Match $m).Total
             $updatedMatches += $m
         }
-        $updatedMatches | Export-Csv -Path $path -NoTypeInformation -Force
+        $updatedMatches | Export-Csv -Path $Env:FNSMatchDB -NoTypeInformation -Force
     }
 }
 
 Function Get-TopScoringGames {
-    $topScores = @()
-    $PlayerList = Get-FNPlayerList
-    foreach ($p in $PlayerList) {
-        $playTops = Get-PlayerTopScoringGames -Username $p.Username
-        $topScores += $playtops
-    }
-    $topScores = $topScores | Sort-Object -Property @{Expression = {$_.Score}; Ascending = $false}, Date | Select-Object -First 25
-    $topScores
-}
-
-Function Get-PlayerTopScoringGames {
-    Param([parameter(Mandatory)][string]$Username)
-    $singleMatchScores = @()
+    Param(
+        [string]$Username = "*",
+        [string]$Playlist = "*",
+        [int]$Count = 25,
+        [int]$Days = 5000
+    )
     $include = @("p2","p9","p10")
-    $matches = Import-CSV "$Env:FNSMatchDir\$Username.CSV"
-    foreach ($m in $matches) {
-        if (($m.matches -eq 1)  -and ($include -contains $m.Playlist)) {
-            $matchData = Format-MatchOutput -Entry $m -IncludeScore -Username $Username -IncludePlayersOutlived
-            if($matchData.Score -ge 5) { $singleMatchScores += $matchData }
-        }
+    $recentDate = (Get-Date).AddDays(-$Days)
+    $singleMatches = Get-LocalGamesPlayed | Where-Object {((Get-Date -Date $_.DateCollected) -ge $recentDate) -and ($_.matches -eq 1) -and ($include -contains $_.Playlist) -and ($_.Username -like $Username)}
+    $formatted = @()
+    foreach ($m in $singleMatches) {
+        $match = Format-MatchOutput -Entry $m -IncludeUsername -IncludeScore -IncludePlayersOutlived
+        $formatted += $match
     }
-    $singleMatchScores = $singleMatchScores | Sort-Object -Property @{Expression = {$_.Score}; Ascending = $false}, Date
-    $singleMatchScores
+    $topScores = $formatted | Where-Object { $_.Playlist -like $Playlist } | Sort-Object -Property @{Expression = {$_.Score}; Ascending = $false}, Date | Select-Object -First $Count
+    $topScores
 }
 
 Function Clear-RecycleBin {
     Remove-Item "$Env:FNSRecycleBinDir\*" -Force
 }
 
-Function Update-TopScoringGames {
-    $output = Get-TopScoringGames | Sort-Object -Property @{Expression = {$_.Score}; Ascending = $false}, Date | Select-Object -First 25
-    $output | Export-CSV -Path "$Env:FNSPagesDir\TopScoreGames.CSV" -Force -NoTypeInformation
-}
-
-Function Get-FNPlayerCareerStats {
+Function Get-RecentMatches {
     Param(
-        [parameter(Mandatory)][string]$Username,
-        [array]$ScoringSettings = @($Env:FNSScorePerElim,$Env:FNSScorePerWin,$Env:FNSScorePerTop10Percent,$Env:FNSScorePerTop25Percent,$Env:FNSScorePerPlayerOutlived)
+        [string]$Username = "*",
+        [string]$Playlist = "*",
+        [int]$Days = 7
     )
 
-    $lifeTimeStats = (Get-FNPlayerStats -Username $Username).lifeTimeStats
-    $wins = [int]$lifeTimeStats[8].Value
-    $Top10Percent = ([int]$lifeTimeStats[0].Value + [int]$lifeTimeStats[1].Value + [int]$lifeTimeStats[3].Value)
-    $Top25Percent = ([int]$lifeTimeStats[2].Value + [int]$lifeTimeStats[4].Value + [int]$lifeTimeStats[5].Value)
-    $placementPoints = ($wins * [int]$ScoringSettings[1]) + (($Top10Percent - $Wins) * [int]$ScoringSettings[2]) + (($Top25Percent - $Top10Percent - $Wins) * [int]$ScoringSettings[3])
-    $score = [int]$lifeTimeStats[10].Value + $placementPoints
-
-    $object = [pscustomobject]@{
-        Username = $Username
-        Matches = [int]$lifeTimeStats[7].Value
-        Wins = $wins
-        WinPercent = [Math]::Round((([int]$lifeTimeStats[8].Value / [int]$lifeTimeStats[7].Value) * 100),2)
-        Elims = [int]$lifeTimeStats[10].Value
-        KD = [Math]::Round(([int]$lifeTimeStats[10].Value / ([int]$lifeTimeStats[7].Value - $wins)),2) 
-        Score = $score
-        ScorePerMatch = [Math]::Round(($score/[int]$lifeTimeStats[7].Value),2)
-    }
-
-    $object
-}
-
-Function Get-AllFNPlayerCareerStats {
-    $all = @()
-    $players = Get-FNPlayerList
-    foreach ($p in $players) {
-        $playerTop = Get-FNPlayerCareerStats -Username $p.Username
-        $all += $playerTop
-    }
-    $all = $all | Sort-Object -Property @{Expression = {$_.ScorePerMatch}; Ascending = $false}, Wins, Matches
-    $all
+    $recentDate = (Get-Date).AddDays(-$Days)
+    $matches = Get-LocalGamesPlayed -Username $Username | Where-Object {((Get-Date -Date $_.DateCollected) -ge $recentDate) -and ((Convert-PlaylistName -Playlist ($_.Playlist + $_.PlaylistID)) -like $Playlist)}
+    $matches
 }
 
 Function Get-PlayerRecentStats {
     Param(
         [parameter(Mandatory)][string]$Username,
+        [string]$Playlist = "*",
         [int]$Days = 7
     )
-    $recentDate = (Get-Date).AddDays(-$Days)
-    $matches = Get-PlayerLocalGamesPlayed -Username $Username | Where-Object {(Get-Date -Date $_.DateCollected) -ge $recentDate}
+    
+    $matches = Get-RecentMatches -Username $Username -Days $Days -Playlist $Playlist
     $wins = ($matches.top1 | Measure-Object -Sum).Sum
 
     $object = [pscustomobject]@{
@@ -670,11 +575,14 @@ Function Get-PlayerRecentStats {
 }
 
 Function Get-AllPlayerRecentStats {
-    Param([int]$Days = 7)
+    Param(
+        [string]$Playlist = "*",
+        [int]$Days = 7
+    )
     $all = @()
     $players = Get-FNPlayerList
     foreach ($p in $players) {
-        $playerRecent = Get-PlayerRecentStats -Username $p.Username -Days $Days
+        $playerRecent = Get-PlayerRecentStats -Username $p.Username -Days $Days -Playlist $Playlist
         if ($playerRecent.Matches -gt 0) { $all += $playerRecent } 
     }
     $all = $all | Sort-Object -Property @{Expression = {$_.ScorePerMatch}; Ascending = $false}, Wins, Matches
@@ -695,8 +603,8 @@ Function Start-Countdown {
     }
 }
 
-Function Get-AllPlaylists {
-    $playlists = Import-CSV "$Env:FNSAssetsDir\playlists.csv"
+Function Get-Playlists {
+    $playlists = Import-CSV $Env:FNSPlaylistDB
     $playlists
 }
 
@@ -780,7 +688,7 @@ Function Update-StatsOverlay {
         "p10"
     )
 
-    $matches = Get-PlayerLocalGamesPlayed $Username | Where-Object { ((Get-Date -Date $_.DateCollected) -gt $StartDate) -and ($validPlaylists -contains $_.Playlist) }
+    $matches = Get-LocalGamesPlayed -Username $Username | Where-Object { ((Get-Date -Date $_.DateCollected) -gt $StartDate) -and ($validPlaylists -contains $_.Playlist) }
 
     if ((($matches.Kills | Measure-Object -Sum).Sum) -gt 0) {
         $KDcalc = [Math]::Round(((($matches.Kills | Measure-Object -Sum).Sum)/((($matches.Matches | Measure-Object -Sum).Sum)-(($matches.Top1 | Measure-Object -Sum).Sum))),2)
@@ -820,32 +728,30 @@ Function Test-Username {
 }
 
 Function Get-NewVictoryRoyales {
-    $royalesLoc = "$Env:FNSPagesDir\IndividualVictoryRoyales.CSV"
+    $royalesLoc = $Env:FNSVictoryDB
     $royales = @()
 
     # Get Royales Today
-    $players = Get-FNPlayerList
-    foreach ($p in $players) {
-        $validPlaylists = @("p2","p9","p10")
-        $validPlayIDs = @("ltm109","ltm139")
-        $games = Get-PlayerLocalGamesPlayed -Username $p.Username
-        $wins = $games | Where-Object {($_.top1 -eq 1) -and ($_.matches -eq 1) -and (($validPlaylists -contains $_.Playlist) -or ($validPlayIDs -contains ("$($_.Playlist)$($_.PlaylistID)")))}
-        if (($wins | Measure-Object).Count -gt 0) {
-            foreach ($w in $wins) {
-                $playlist = Convert-PlaylistName -Playlist "$($w.Playlist)$($w.PlaylistID)"
-                $object = [PSCustomObject] @{
-                    ID = $w.ID
-                    Username = $p.Username
-                    'Date Collected' = $w.DateCollected
-                    Eliminations = $w.Kills
-                    Playlist = $playlist
-                    'Minutes Played' = $w.MinutesPlayed
-                    'Players Outlived' = $w.PlayersOutlived
-                }
-                $royales += $object
+    $validPlaylists = @("p2","p9","p10")
+    $validPlayIDs = @("ltm109","ltm139")
+    $games = Get-LocalGamesPlayed
+    $wins = $games | Where-Object {($_.top1 -eq 1) -and ($_.matches -eq 1) -and (($validPlaylists -contains $_.Playlist) -or ($validPlayIDs -contains ("$($_.Playlist)$($_.PlaylistID)")))}
+    if (($wins | Measure-Object).Count -gt 0) {
+        foreach ($w in $wins) {
+            $playlist = Convert-PlaylistName -Playlist "$($w.Playlist)$($w.PlaylistID)"
+            $object = [PSCustomObject] @{
+                ID = $w.ID
+                Username = $w.Username
+                'Date Collected' = $w.DateCollected
+                Eliminations = $w.Kills
+                Playlist = $playlist
+                'Minutes Played' = $w.MinutesPlayed
+                'Players Outlived' = $w.PlayersOutlived
             }
+            $royales += $object
         }
     }
+
 
     # Check Royales List and Update
     $newRoyales = @()
@@ -875,3 +781,24 @@ Function Get-NewVictoryRoyales {
     $merge | Sort-Object -Property 'Date Collected' -Descending | Export-Csv -Path $royalesLoc -NoTypeInformation -Force
     $newRoyales
 }
+
+Function Find-UnknownPlaylists {
+    $output = @()
+    $allMatches = Get-LocalGamesPlayed
+    $playlists = Get-Playlists
+    foreach ($m in $allMatches) {
+        $code = $m.Playlist + $m.PlaylistID
+        if ($playlists.code -notcontains $code) {
+            $format = Format-MatchOutput -Entry $m -IncludeUsername -IncludeNumberOfMatches -IncludeMinutesPlayed -IncludePlayersOutlived
+            $output += $format
+        }
+    }
+
+    $output
+}
+
+Function Get-DailyLeaderboard {
+
+}
+
+Initialize-FNSDirectories

@@ -5,12 +5,21 @@ ltm161,Team Rumble
 misc29,Creative
 misc89,Party at Pleasant Park
 misc97,Creative
-P1031,Duo
+p1031,Duo
 ltm109,Trios Arena
 p933,Squad
 ltm139,Trios
 p2173,Solo Tournament
 p9108,Squad Arena
-ltm116,Sniper Shootout Duos
-ltm125,Solid Gold Squads
-ltm82,High Explosives Squads
+ltm116,Duo Sniper Shootout
+ltm125,Squad Solid Gold
+ltm82,Squad High Explosives
+misc264,Duo Siphon
+p10170,Duo Tournament
+p2,Solo
+p9,Squad
+p10,Duo
+misc,Misc
+ltm,LTM
+p10106,Duo Arena
+misc92,Star Wars Event
